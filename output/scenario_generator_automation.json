@@ -1,0 +1,478 @@
+{
+  "blueprint": {
+    "name": "AI Scenario Generator - HTTP Agent Automation Creator",
+    "flow": [
+      {
+        "id": 1,
+        "module": "gateway:CustomWebHook",
+        "version": 1,
+        "parameters": {
+          "hook": "scenario-generator-webhook",
+          "maxResults": 1
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": -200,
+            "y": 0
+          },
+          "restore": {},
+          "expect": [
+            {
+              "name": "automation_description",
+              "type": "text",
+              "label": "What automation do you want to create?",
+              "required": true
+            },
+            {
+              "name": "user_email",
+              "type": "email",
+              "label": "Your email for notifications",
+              "required": false
+            },
+            {
+              "name": "scenario_name",
+              "type": "text",
+              "label": "Scenario name (optional)",
+              "required": false
+            }
+          ]
+        },
+        "note": "Webhook trigger for automation requests"
+      },
+      {
+        "id": 2,
+        "module": "util:SetVariables",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "variables": [
+            {
+              "name": "makeApiUrl",
+              "value": "https://api.make.com/v2"
+            },
+            {
+              "name": "userRequest",
+              "value": "{{1.automation_description}}"
+            },
+            {
+              "name": "scenarioName",
+              "value": "{{if(1.scenario_name; 1.scenario_name; \"AI Generated - \" + substring(1.automation_description; 1; 50))}}"
+            },
+            {
+              "name": "timestamp",
+              "value": "{{formatDate(now; \"YYYY-MM-DD-HH-mm-ss\")}}"
+            }
+          ],
+          "scope": "roundtrip"
+        },
+        "metadata": {
+          "designer": {
+            "x": 100,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 3,
+        "module": "openai-gpt:CreateCompletion",
+        "version": 1,
+        "parameters": {
+          "account": {
+            "id": "openai_connection",
+            "label": "OpenAI Connection"
+          },
+          "model": "gpt-4o",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are an expert Make.com automation architect. Generate complete, working Make.com scenario blueprints in JSON format.\n\nYour task:\n1. Analyze the user's automation request\n2. Design the optimal module flow\n3. Generate complete JSON blueprint with all configurations\n4. Include proper connections, mappings, and error handling\n5. Use realistic module IDs and proper Make.com syntax\n\nAvailable modules:\n- gmail/google-email: Search emails, send emails, modify labels\n- google-sheets: Add/update rows, read spreadsheets\n- google-docs: Create/update documents\n- openai-gpt: AI processing and analysis\n- util: Set variables, text aggregator, basic feeder\n- http: Make HTTP requests (Enterprise)\n- mysql: Database operations\n- builtin: Filters, routers, basic operations\n- gateway: Webhooks, triggers\n\nResponse format: Return ONLY valid JSON blueprint structure matching Make.com format. No explanations, just the JSON."
+            },
+            {
+              "role": "user",
+              "content": "Create a Make.com automation for: {{2.userRequest}}\n\nScenario name: {{2.scenarioName}}\nGeneration timestamp: {{2.timestamp}}\n\nGenerate the complete JSON blueprint ready for deployment."
+            }
+          ],
+          "max_tokens": 4000,
+          "temperature": 0.2,
+          "n": 1
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 400,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 4,
+        "module": "util:SetVariables",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "variables": [
+            {
+              "name": "generatedBlueprint",
+              "value": "{{3.choices[1].message.content}}"
+            },
+            {
+              "name": "blueprintValid",
+              "value": "{{if(contains(3.choices[1].message.content; \"blueprint\"); \"true\"; \"false\")}}"
+            }
+          ],
+          "scope": "roundtrip"
+        },
+        "metadata": {
+          "designer": {
+            "x": 700,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 5,
+        "module": "builtin:BasicFilter",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "condition": "{{4.blueprintValid}}"
+        },
+        "metadata": {
+          "designer": {
+            "x": 1000,
+            "y": 0
+          },
+          "filter": {
+            "conditions": [
+              {
+                "a": "{{4.blueprintValid}}",
+                "o": "text:equal",
+                "b": "true"
+              }
+            ]
+          }
+        },
+        "note": "Only proceed if valid blueprint generated"
+      },
+      {
+        "id": 6,
+        "module": "http:ActionSendData",
+        "version": 3,
+        "parameters": {
+          "account": {
+            "id": "make_api_connection",
+            "label": "Make.com API Connection"
+          },
+          "url": "{{2.makeApiUrl}}/scenarios",
+          "method": "POST",
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Token {{MAKE_API_TOKEN}}"
+            }
+          ],
+          "qs": [],
+          "bodyType": "raw",
+          "parseResponse": true,
+          "timeout": 300
+        },
+        "mapper": {
+          "body": "{{4.generatedBlueprint}}"
+        },
+        "metadata": {
+          "designer": {
+            "x": 1300,
+            "y": 0
+          }
+        },
+        "note": "Create scenario via Make.com API"
+      },
+      {
+        "id": 7,
+        "module": "util:SetVariables",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "variables": [
+            {
+              "name": "scenarioId",
+              "value": "{{6.data.scenario.id}}"
+            },
+            {
+              "name": "scenarioUrl",
+              "value": "https://www.make.com/en/scenarios/{{6.data.scenario.id}}/edit"
+            },
+            {
+              "name": "creationSuccess",
+              "value": "{{if(6.data.scenario.id; \"true\"; \"false\")}}"
+            }
+          ],
+          "scope": "roundtrip"
+        },
+        "metadata": {
+          "designer": {
+            "x": 1600,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 8,
+        "module": "google-sheets:AddRow",
+        "version": 2,
+        "parameters": {
+          "account": {
+            "id": "gsheets_connection",
+            "label": "Google Sheets Connection"
+          },
+          "spreadsheetId": "{{AUTOMATION_LOG_SPREADSHEET_ID}}",
+          "sheetId": "Generated_Scenarios",
+          "includesHeaders": true,
+          "columns": [
+            {
+              "key": "timestamp",
+              "label": "Created"
+            },
+            {
+              "key": "request",
+              "label": "User Request"
+            },
+            {
+              "key": "scenario_name",
+              "label": "Scenario Name"
+            },
+            {
+              "key": "scenario_id",
+              "label": "Scenario ID"
+            },
+            {
+              "key": "scenario_url",
+              "label": "Scenario URL"
+            },
+            {
+              "key": "status",
+              "label": "Status"
+            }
+          ]
+        },
+        "mapper": {
+          "values": {
+            "timestamp": "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}",
+            "request": "{{1.automation_description}}",
+            "scenario_name": "{{2.scenarioName}}",
+            "scenario_id": "{{7.scenarioId}}",
+            "scenario_url": "{{7.scenarioUrl}}",
+            "status": "{{if(7.creationSuccess; \"Created Successfully\"; \"Creation Failed\")}}"
+          }
+        },
+        "metadata": {
+          "designer": {
+            "x": 1900,
+            "y": 0
+          }
+        },
+        "note": "Log all generations for tracking"
+      },
+      {
+        "id": 9,
+        "module": "google-email:ActionSendEmail",
+        "version": 2,
+        "parameters": {
+          "account": {
+            "id": "gmail_connection",
+            "label": "Gmail Connection"
+          }
+        },
+        "mapper": {
+          "to": [
+            {
+              "address": "{{if(1.user_email; 1.user_email; \"admin@example.com\")}}",
+              "name": "Automation User"
+            }
+          ],
+          "subject": "✅ Your Make.com Scenario is Ready: {{2.scenarioName}}",
+          "html": "<h2>Your Automation is Ready!</h2><p><strong>Request:</strong> {{1.automation_description}}</p><p><strong>Scenario Name:</strong> {{2.scenarioName}}</p><p><strong>Scenario ID:</strong> {{7.scenarioId}}</p><p><strong>Edit URL:</strong> <a href=\"{{7.scenarioUrl}}\">{{7.scenarioUrl}}</a></p><hr><p><strong>Next Steps:</strong></p><ol><li>Click the URL above to open your scenario</li><li>Review and test the configuration</li><li>Set up any required connections</li><li>Enable the scenario to start automation</li></ol><p><em>Generated: {{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}</em></p>"
+        },
+        "metadata": {
+          "designer": {
+            "x": 2200,
+            "y": 0
+          }
+        },
+        "note": "Notify user of successful creation"
+      },
+      {
+        "id": 10,
+        "module": "util:SetVariables",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "variables": [
+            {
+              "name": "errorMessage",
+              "value": "Blueprint generation failed for request: {{1.automation_description}}"
+            },
+            {
+              "name": "errorTimestamp",
+              "value": "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}"
+            }
+          ],
+          "scope": "roundtrip"
+        },
+        "metadata": {
+          "designer": {
+            "x": 1000,
+            "y": 300
+          }
+        },
+        "note": "Error handler - blueprint generation failed"
+      },
+      {
+        "id": 11,
+        "module": "google-sheets:AddRow",
+        "version": 2,
+        "parameters": {
+          "account": {
+            "id": "gsheets_connection",
+            "label": "Google Sheets Connection"
+          },
+          "spreadsheetId": "{{AUTOMATION_LOG_SPREADSHEET_ID}}",
+          "sheetId": "Generated_Scenarios",
+          "includesHeaders": true,
+          "columns": [
+            {
+              "key": "timestamp",
+              "label": "Created"
+            },
+            {
+              "key": "request",
+              "label": "User Request"
+            },
+            {
+              "key": "scenario_name",
+              "label": "Scenario Name"
+            },
+            {
+              "key": "error",
+              "label": "Error"
+            },
+            {
+              "key": "status",
+              "label": "Status"
+            }
+          ]
+        },
+        "mapper": {
+          "values": {
+            "timestamp": "{{10.errorTimestamp}}",
+            "request": "{{1.automation_description}}",
+            "scenario_name": "{{2.scenarioName}}",
+            "error": "{{10.errorMessage}}",
+            "status": "Generation Failed"
+          }
+        },
+        "metadata": {
+          "designer": {
+            "x": 1300,
+            "y": 300
+          }
+        },
+        "note": "Log failed generations"
+      }
+    ],
+    "metadata": {
+      "version": 1,
+      "scenario": {
+        "id": "ai-scenario-generator",
+        "name": "AI Scenario Generator - HTTP Agent Automation Creator",
+        "description": "Generates complete Make.com scenarios from natural language descriptions using AI and HTTP Agent",
+        "scheduling": {
+          "type": "webhook"
+        },
+        "sequential": true,
+        "confidential": false,
+        "dataloss": false,
+        "dlq": false
+      },
+      "designer": {
+        "orphans": []
+      }
+    }
+  },
+  "modules": {
+    "gateway:CustomWebHook": {
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "metadata": {
+        "display": {
+          "title": "Custom webhook",
+          "description": "Triggers scenario from webhook calls"
+        }
+      }
+    },
+    "http:ActionSendData": {
+      "module": "http:ActionSendData", 
+      "version": 3,
+      "metadata": {
+        "display": {
+          "title": "Make a request",
+          "description": "Makes HTTP requests to APIs"
+        }
+      }
+    },
+    "openai-gpt:CreateCompletion": {
+      "module": "openai-gpt:CreateCompletion",
+      "version": 1,
+      "metadata": {
+        "display": {
+          "title": "Create a completion",
+          "description": "Generates AI responses using GPT models"
+        }
+      }
+    },
+    "google-sheets:AddRow": {
+      "module": "google-sheets:AddRow",
+      "version": 2,
+      "metadata": {
+        "display": {
+          "title": "Add a row",
+          "description": "Adds data to Google Sheets"
+        }
+      }
+    },
+    "google-email:ActionSendEmail": {
+      "module": "google-email:ActionSendEmail",
+      "version": 2,
+      "metadata": {
+        "display": {
+          "title": "Send an email",
+          "description": "Sends emails via Gmail"
+        }
+      }
+    }
+  },
+  "setup": {
+    "required_connections": [
+      "openai_connection",
+      "make_api_connection", 
+      "gsheets_connection",
+      "gmail_connection"
+    ],
+    "required_variables": [
+      "MAKE_API_TOKEN",
+      "AUTOMATION_LOG_SPREADSHEET_ID"
+    ],
+    "instructions": [
+      "1. Set up connections: OpenAI, Make.com API, Google Sheets, Gmail",
+      "2. Create environment variables: MAKE_API_TOKEN, AUTOMATION_LOG_SPREADSHEET_ID", 
+      "3. Create Google Sheet with 'Generated_Scenarios' tab for logging",
+      "4. Test webhook with sample automation request",
+      "5. Share webhook URL for automation generation requests"
+    ]
+  }
+}
