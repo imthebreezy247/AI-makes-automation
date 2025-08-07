@@ -1,0 +1,32 @@
+{
+  "blueprint": {
+    "name": "Simple Import Test",
+    "flow": [
+      {
+        "id": 1,
+        "module": "gateway:CustomWebHook",
+        "version": 1,
+        "parameters": {
+          "hook": 1,
+          "maxResults": 1
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 0,
+            "y": 0
+          },
+          "restore": {
+            "hook": {
+              "label": "Test webhook"
+            }
+          },
+          "expect": []
+        }
+      }
+    ],
+    "metadata": {
+      "version": 1
+    }
+  }
+}
