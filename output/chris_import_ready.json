@@ -1,0 +1,259 @@
+{
+  "name": "Chris Deal Processor - Weekly Gmail to Text",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": "b4bd69ed-6f0b-46f3-aafb-1f874261b47b",
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": -200,
+          "y": 0
+        },
+        "restore": {},
+        "expect": []
+      },
+      "note": "Manual trigger for testing - remove after setup"
+    },
+    {
+      "id": 2,
+      "module": "google-email:ActionSearchEmails",
+      "version": 2,
+      "parameters": {
+        "account": {
+          "id": "gmail_chris_connection",
+          "label": "chris@cjsinsurancesolutions.com"
+        },
+        "query": "label:\"Sold deal\" is:unread",
+        "limit": 5,
+        "markAsRead": false
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 100,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "util:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "variables": [
+          {
+            "name": "emailBatch",
+            "value": "{{map(2.array; \"subject\"; \"from\")}}"
+          },
+          {
+            "name": "processingInstructions",
+            "value": "Extract client name from subject line and agent name from sender. Format as: '25x5 Referral fee for 1. ClientName \\ Agt: AgentName'. Never include Christopher Shannahan as agent."
+          }
+        ],
+        "scope": "roundtrip"
+      },
+      "metadata": {
+        "designer": {
+          "x": 400,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 4,
+      "module": "openai-gpt:CreateCompletion",
+      "version": 1,
+      "parameters": {
+        "account": {
+          "id": "openai_connection",
+          "label": "OpenAI Connection"
+        },
+        "model": "gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a deal processor for Chris's insurance business. Extract client names from email subjects and agent names from senders.\n\nRULES:\n1. Client name: Extract first and last name from subject line\n2. Agent name: Extract sender's first name + first initial of last name\n3. NEVER extract 'Christopher Shannahan' or 'Chris Shannahan' as agent\n4. Format EXACTLY as: '25x5 Referral fee for 1. [Client] \\ Agt: [Agent] - 2. [Client] \\ Agt: [Agent]...'\n5. Keep under 200 characters total\n6. Process exactly 5 deals per batch"
+          },
+          {
+            "role": "user",
+            "content": "Process these {{length(2.array)}} emails into the required format:\n\n{{join(map(2.array; \"Email \" + toString($index + 1) + \":\nSubject: \" + subject + \"\nFrom: \" + from.name + \" <\" + from.address + \">\n\"); \"\n\")}}"
+          }
+        ],
+        "max_tokens": 500,
+        "temperature": 0.1,
+        "n": 1,
+        "stop": []
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 700,
+          "y": 0
+        },
+        "parameters": {
+          "max_tokens": {
+            "label": "500"
+          },
+          "temperature": {
+            "label": "0.1"
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "module": "util:TextAggregator",
+      "version": 1,
+      "parameters": {
+        "rowSeparator": "",
+        "feeder": 4
+      },
+      "mapper": {
+        "value": "{{4.choices[1].message.content}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 1000,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 6,
+      "module": "google-email:ActionModifyLabels",
+      "version": 1,
+      "parameters": {
+        "account": {
+          "id": "gmail_chris_connection",
+          "label": "chris@cjsinsurancesolutions.com"
+        }
+      },
+      "mapper": {
+        "messageId": "{{2.id}}",
+        "addLabelIds": [
+          "Label_Processed"
+        ],
+        "removeLabelIds": []
+      },
+      "metadata": {
+        "designer": {
+          "x": 1300,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 7,
+      "module": "builtin:BasicFeeder",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "{{2.array}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 1300,
+          "y": 150
+        }
+      }
+    },
+    {
+      "id": 8,
+      "module": "google-docs:CreateADocument",
+      "version": 2,
+      "parameters": {
+        "account": {
+          "id": "gdrive_connection",
+          "label": "Google Drive Connection"
+        },
+        "folderId": "/",
+        "document": {
+          "title": "Deal Batch - {{formatDate(now; \"YYYY-MM-DD HH:mm\")}}",
+          "content": "{{5.text}}\n\nProcessed: {{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}\nTotal emails: {{length(2.array)}}"
+        }
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 1600,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 9,
+      "module": "google-sheets:AddRow",
+      "version": 2,
+      "parameters": {
+        "account": {
+          "id": "gsheets_connection",
+          "label": "Google Sheets Connection"
+        },
+        "mode": "map",
+        "insertDataOption": "INSERT_ROWS",
+        "spreadsheetId": "{{SPREADSHEET_ID}}",
+        "sheetId": "Sheet1",
+        "includesHeaders": true,
+        "columns": [
+          {
+            "key": "timestamp",
+            "label": "Timestamp"
+          },
+          {
+            "key": "batch",
+            "label": "Deal Batch"
+          },
+          {
+            "key": "count",
+            "label": "Email Count"
+          },
+          {
+            "key": "status",
+            "label": "Status"
+          }
+        ]
+      },
+      "mapper": {
+        "values": {
+          "timestamp": "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}",
+          "batch": "{{5.text}}",
+          "count": "{{length(2.array)}}",
+          "status": "Processed"
+        }
+      },
+      "metadata": {
+        "designer": {
+          "x": 1900,
+          "y": 0
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "version": 1,
+    "scenario": {
+      "id": "d8c7d0af",
+      "name": "Chris Deal Processor - Weekly Gmail to Text",
+      "description": "Processes 'Sold deal' emails weekly, extracts client and agent names, formats for 200-char limit",
+      "scheduling": {
+        "type": "interval",
+        "interval": 604800,
+        "time": "00:00"
+      },
+      "sequential": true,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false
+    },
+    "designer": {
+      "orphans": []
+    }
+  }
+}

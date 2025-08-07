@@ -1,0 +1,29 @@
+
+    🎯 QUICK SETUP - Just 3 Steps!
+    
+    1. IMPORT TO MAKE.COM:
+       - Go to Make.com → Create new scenario
+       - Click (...) menu → Import Blueprint
+       - Upload: chris_import_ready.json
+    
+    2. ONE-TIME CONNECTIONS (Click each and authorize):
+       ✓ Gmail: chris@cjsinsurancesolutions.com
+       ✓ OpenAI: Your API key
+       ✓ Google Drive: For saving outputs
+       ✓ Google Sheets: For tracking (optional)
+    
+    3. ACTIVATE:
+       - Click "Run once" to test
+       - Turn ON for weekly automation
+    
+    That's it! No configuration needed - everything is pre-set!
+    
+    📊 What it does:
+    - Checks "Sold deal" label every week
+    - Processes 5 emails at a time
+    - Extracts names using AI
+    - Formats: "25x5 Referral fee for..."
+    - Marks emails as processed
+    - Saves to Google Docs
+    - Logs to spreadsheet
+    
