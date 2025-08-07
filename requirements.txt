@@ -1,0 +1,8 @@
+# Core dependencies for AI Makes Automation
+# No external dependencies required - uses only Python standard library
+
+# Optional: For enhanced development
+# jsonschema>=4.0.0  # For advanced JSON schema validation
+# pydantic>=1.8.0    # For data validation and parsing
+# click>=8.0.0       # For enhanced CLI functionality
+# rich>=12.0.0       # For beautiful terminal output

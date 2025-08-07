@@ -1,0 +1,217 @@
+{
+  "name": "Gmail_Customer_Support_Automation",
+  "description": "Monitor support emails, classify with AI, auto-respond to FAQs, create tickets for complex issues",
+  "blueprint": {
+    "name": "Gmail Customer Support AI",
+    "flow": [
+      {
+        "id": 1,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "watch": "emails",
+          "connection": "{{gmail_connection}}",
+          "folder": "INBOX",
+          "filter": "to:support@company.com is:unread -label:processed",
+          "maxResults": 20,
+          "markAsRead": false
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 0,
+            "y": 0
+          },
+          "restore": {
+            "parameters": {
+              "folder": {
+                "label": "INBOX"
+              },
+              "watch": {
+                "label": "Emails"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "module": "make-ai-agents",
+        "version": 1,
+        "parameters": {
+          "agent": "{{support_ai_agent}}",
+          "messages": [],
+          "threadId": "{{1.threadId}}",
+          "timeout": 300
+        },
+        "mapper": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "Analyze this customer support email:\n\nFrom: {{1.from}}\nSubject: {{1.subject}}\nBody: {{substring(1.body; 0; 2000)}}\n\nClassify as:\n1. FAQ (can auto-respond)\n2. Bug Report (needs developer)\n3. Feature Request (needs product team)\n4. Billing Issue (needs billing team)\n5. Spam (ignore)\n\nProvide JSON response with category, confidence, and draft response if FAQ."
+            }
+          ]
+        },
+        "metadata": {
+          "designer": {
+            "x": 300,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 3,
+        "module": "builtin:router",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "routes": [
+            {
+              "label": "FAQ - Auto Reply",
+              "condition": "{{contains(2.response; \"FAQ\")}}"
+            },
+            {
+              "label": "Create Ticket",
+              "condition": "{{or(contains(2.response; \"Bug\"); contains(2.response; \"Feature\"); contains(2.response; \"Billing\"))}}"
+            },
+            {
+              "label": "Spam",
+              "condition": "{{contains(2.response; \"Spam\")}}"
+            }
+          ]
+        },
+        "metadata": {
+          "designer": {
+            "x": 600,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 4,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "sendEmail": true,
+          "connection": "{{gmail_connection}}",
+          "to": "{{1.from}}",
+          "subject": "Re: {{1.subject}}",
+          "content": "{{parseJSON(2.response).draft_response}}",
+          "contentType": "text/html"
+        },
+        "filter": {
+          "condition": "{{3.routeIndex = 1}}"
+        },
+        "metadata": {
+          "designer": {
+            "x": 900,
+            "y": -100
+          }
+        }
+      },
+      {
+        "id": 5,
+        "module": "mysql",
+        "version": 1,
+        "parameters": {
+          "connection": "{{mysql_connection}}",
+          "query": "INSERT INTO support_tickets (email_id, customer_email, subject, category, priority, status, created_at) VALUES (?, ?, ?, ?, ?, 'open', NOW())"
+        },
+        "mapper": {
+          "values": [
+            "{{1.id}}",
+            "{{1.from}}",
+            "{{1.subject}}",
+            "{{parseJSON(2.response).category}}",
+            "{{if(contains(parseJSON(2.response).category; 'Bug'); 'high'; 'normal')}}"
+          ]
+        },
+        "filter": {
+          "condition": "{{3.routeIndex = 2}}"
+        },
+        "metadata": {
+          "designer": {
+            "x": 900,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 6,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "modifyLabels": true,
+          "connection": "{{gmail_connection}}",
+          "messageId": "{{1.id}}",
+          "addLabelIds": [
+            "SPAM"
+          ],
+          "removeLabelIds": [
+            "INBOX"
+          ]
+        },
+        "filter": {
+          "condition": "{{3.routeIndex = 3}}"
+        },
+        "metadata": {
+          "designer": {
+            "x": 900,
+            "y": 100
+          }
+        }
+      },
+      {
+        "id": 7,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "modifyLabels": true,
+          "connection": "{{gmail_connection}}",
+          "messageId": "{{1.id}}",
+          "addLabelIds": [
+            "processed"
+          ]
+        },
+        "metadata": {
+          "designer": {
+            "x": 1200,
+            "y": 0
+          }
+        }
+      }
+    ],
+    "metadata": {
+      "version": 1,
+      "scenario": "Gmail Customer Support AI",
+      "designer": {
+        "orphaned": false
+      }
+    }
+  },
+  "ai_agent_config": {
+    "name": "Support_Email_Classifier",
+    "system_prompt": "You are a customer support email classifier. Analyze emails and categorize them accurately.\n\nCategories:\n- FAQ: Common questions with standard responses\n- Bug Report: Technical issues that need development team\n- Feature Request: New feature suggestions for product team  \n- Billing Issue: Payment, subscription, or billing questions\n- Spam: Irrelevant or promotional content\n\nFor FAQ emails, provide a helpful response. For others, classify only.\n\nResponse format (JSON):\n{\n  \"category\": \"FAQ|Bug Report|Feature Request|Billing Issue|Spam\",\n  \"confidence\": 0.0-1.0,\n  \"draft_response\": \"response text for FAQ only\",\n  \"urgency\": \"low|normal|high\"\n}",
+    "max_tokens": 1000,
+    "temperature": 0.3
+  },
+  "connections": [
+    {
+      "name": "gmail_connection",
+      "type": "gmail",
+      "scopes": [
+        "https://www.googleapis.com/auth/gmail.modify"
+      ]
+    },
+    {
+      "name": "support_ai_agent",
+      "type": "make-ai-agents",
+      "model": "gpt-4o-mini"
+    },
+    {
+      "name": "mysql_connection",
+      "type": "mysql",
+      "database": "support_system"
+    }
+  ]
+}

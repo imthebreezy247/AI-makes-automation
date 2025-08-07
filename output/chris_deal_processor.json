@@ -1,0 +1,435 @@
+{
+  "automation": {
+    "name": "Chris_Deal_Processor_Automation",
+    "description": "Weekly Gmail deal processing for chris@cjsinsurancesolutions.com",
+    "modules": [
+      {
+        "id": 4,
+        "module": "builtin:schedule",
+        "version": 1,
+        "parameters": {
+          "schedule": "0 0 * * 1"
+        },
+        "metadata": {
+          "designer": {
+            "x": -300,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 1,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "watch": "emails",
+          "connection": "{{gmail_connection}}",
+          "folder": "INBOX",
+          "filter": "label:\"Sold deal\" is:unread",
+          "maxResults": 5,
+          "markAsRead": false
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 0,
+            "y": 0
+          },
+          "restore": {
+            "parameters": {
+              "folder": {
+                "label": "INBOX"
+              },
+              "watch": {
+                "label": "Emails"
+              }
+            }
+          },
+          "expect": [
+            {
+              "name": "id",
+              "type": "text",
+              "label": "Message ID"
+            },
+            {
+              "name": "threadId",
+              "type": "text",
+              "label": "Thread ID"
+            },
+            {
+              "name": "subject",
+              "type": "text",
+              "label": "Subject"
+            },
+            {
+              "name": "from",
+              "type": "text",
+              "label": "From"
+            },
+            {
+              "name": "body",
+              "type": "text",
+              "label": "Body"
+            }
+          ],
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "module": "make-ai-agents",
+        "version": 1,
+        "parameters": {
+          "agent": "{{ai_agent_connection}}",
+          "messages": [
+            {
+              "role": "user",
+              "content": "{{1.subject}}\n\n{{1.body}}"
+            }
+          ],
+          "threadId": "{{1.threadId}}",
+          "timeout": 300
+        },
+        "mapper": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a deal processing specialist for Chris's insurance business. \n\nExtract information from sold deal emails:\n\n1. CLIENT NAME: Extract first and last name from the email subject line\n2. AGENT NAME: Extract sender's first name + first initial of last name\n3. NEVER extract \"Christopher Shannahan\" or \"Chris Shannahan\" as agent names\n\nFormat exactly as: \"25x5 Referral fee for 1. [ClientName] \\ Agt: [AgentName] - 2. [ClientName] \\ Agt: [AgentName] - 3. [ClientName] \\ Agt: [AgentName] - 4. [ClientName] \\ Agt: [AgentName] - 5. [ClientName] \\ Agt: [AgentName]\"\n\nKeep under 200 characters total. Process exactly 5 deals per batch."
+            },
+            {
+              "role": "user",
+              "content": "Process these emails and extract deal information:\n\nEmail 1 Subject: {{1.subject}}\nFrom: {{1.from}}\n\nEmail 2 Subject: {{2.subject}}\nFrom: {{2.from}}\n\nEmail 3 Subject: {{3.subject}}\nFrom: {{3.from}}\n\nEmail 4 Subject: {{4.subject}}\nFrom: {{4.from}}\n\nEmail 5 Subject: {{5.subject}}\nFrom: {{5.from}}"
+            }
+          ]
+        },
+        "metadata": {
+          "designer": {
+            "x": 300,
+            "y": 0
+          },
+          "expect": [
+            {
+              "name": "response",
+              "type": "text",
+              "label": "AI Response"
+            },
+            {
+              "name": "category",
+              "type": "text",
+              "label": "Category"
+            },
+            {
+              "name": "action",
+              "type": "text",
+              "label": "Recommended Action"
+            }
+          ],
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "module": "builtin:datastore",
+        "version": 1,
+        "parameters": {
+          "action": "add",
+          "dataStructure": "automation_log"
+        },
+        "mapper": {
+          "data": {
+            "timestamp": "{{now}}",
+            "scenario_id": "{{scenario.id}}",
+            "execution_id": "{{execution.id}}",
+            "status": "success",
+            "details": "{{json(bundle)}}"
+          }
+        },
+        "metadata": {
+          "designer": {
+            "x": 1500,
+            "y": 0
+          },
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 5,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "modifyLabels": true,
+          "connection": "{{gmail_connection}}",
+          "messageId": "{{1.id}}",
+          "addLabelIds": [
+            "processed_deals"
+          ],
+          "removeLabelIds": [
+            "Sold deal"
+          ]
+        },
+        "metadata": {
+          "designer": {
+            "x": 1500,
+            "y": 0
+          }
+        }
+      }
+    ],
+    "connections": [
+      {
+        "name": "gmail_connection",
+        "type": "gmail",
+        "description": "Gmail API connection for email operations"
+      },
+      {
+        "name": "ai_agent_connection",
+        "type": "make-ai-agents",
+        "description": "AI agent for processing and analysis"
+      }
+    ],
+    "error_handling": "comprehensive",
+    "testing": true
+  },
+  "blueprint": {
+    "name": "Chris_Deal_Processor_Automation",
+    "flow": [
+      {
+        "id": 4,
+        "module": "builtin:schedule",
+        "version": 1,
+        "parameters": {
+          "schedule": "0 0 * * 1"
+        },
+        "metadata": {
+          "designer": {
+            "x": -300,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 1,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "watch": "emails",
+          "connection": "{{gmail_connection}}",
+          "folder": "INBOX",
+          "filter": "label:\"Sold deal\" is:unread",
+          "maxResults": 5,
+          "markAsRead": false
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 0,
+            "y": 0
+          },
+          "restore": {
+            "parameters": {
+              "folder": {
+                "label": "INBOX"
+              },
+              "watch": {
+                "label": "Emails"
+              }
+            }
+          },
+          "expect": [
+            {
+              "name": "id",
+              "type": "text",
+              "label": "Message ID"
+            },
+            {
+              "name": "threadId",
+              "type": "text",
+              "label": "Thread ID"
+            },
+            {
+              "name": "subject",
+              "type": "text",
+              "label": "Subject"
+            },
+            {
+              "name": "from",
+              "type": "text",
+              "label": "From"
+            },
+            {
+              "name": "body",
+              "type": "text",
+              "label": "Body"
+            }
+          ],
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "module": "make-ai-agents",
+        "version": 1,
+        "parameters": {
+          "agent": "{{ai_agent_connection}}",
+          "messages": [
+            {
+              "role": "user",
+              "content": "{{1.subject}}\n\n{{1.body}}"
+            }
+          ],
+          "threadId": "{{1.threadId}}",
+          "timeout": 300
+        },
+        "mapper": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a deal processing specialist for Chris's insurance business. \n\nExtract information from sold deal emails:\n\n1. CLIENT NAME: Extract first and last name from the email subject line\n2. AGENT NAME: Extract sender's first name + first initial of last name\n3. NEVER extract \"Christopher Shannahan\" or \"Chris Shannahan\" as agent names\n\nFormat exactly as: \"25x5 Referral fee for 1. [ClientName] \\ Agt: [AgentName] - 2. [ClientName] \\ Agt: [AgentName] - 3. [ClientName] \\ Agt: [AgentName] - 4. [ClientName] \\ Agt: [AgentName] - 5. [ClientName] \\ Agt: [AgentName]\"\n\nKeep under 200 characters total. Process exactly 5 deals per batch."
+            },
+            {
+              "role": "user",
+              "content": "Process these emails and extract deal information:\n\nEmail 1 Subject: {{1.subject}}\nFrom: {{1.from}}\n\nEmail 2 Subject: {{2.subject}}\nFrom: {{2.from}}\n\nEmail 3 Subject: {{3.subject}}\nFrom: {{3.from}}\n\nEmail 4 Subject: {{4.subject}}\nFrom: {{4.from}}\n\nEmail 5 Subject: {{5.subject}}\nFrom: {{5.from}}"
+            }
+          ]
+        },
+        "metadata": {
+          "designer": {
+            "x": 300,
+            "y": 0
+          },
+          "expect": [
+            {
+              "name": "response",
+              "type": "text",
+              "label": "AI Response"
+            },
+            {
+              "name": "category",
+              "type": "text",
+              "label": "Category"
+            },
+            {
+              "name": "action",
+              "type": "text",
+              "label": "Recommended Action"
+            }
+          ],
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "module": "builtin:datastore",
+        "version": 1,
+        "parameters": {
+          "action": "add",
+          "dataStructure": "automation_log"
+        },
+        "mapper": {
+          "data": {
+            "timestamp": "{{now}}",
+            "scenario_id": "{{scenario.id}}",
+            "execution_id": "{{execution.id}}",
+            "status": "success",
+            "details": "{{json(bundle)}}"
+          }
+        },
+        "metadata": {
+          "designer": {
+            "x": 1500,
+            "y": 0
+          },
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 5,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "modifyLabels": true,
+          "connection": "{{gmail_connection}}",
+          "messageId": "{{1.id}}",
+          "addLabelIds": [
+            "processed_deals"
+          ],
+          "removeLabelIds": [
+            "Sold deal"
+          ]
+        },
+        "metadata": {
+          "designer": {
+            "x": 1500,
+            "y": 0
+          }
+        }
+      }
+    ],
+    "metadata": {
+      "version": 1,
+      "scenario": "Chris_Deal_Processor_Automation",
+      "designer": {
+        "orphaned": false
+      },
+      "zone": "us1.make.com"
+    }
+  },
+  "validation": {
+    "report": "\ud83d\udcca Validation Summary:\n   Errors: 1\n   Warnings: 1\n   Info: 2\n\n\u274c Errors (must fix):\n   \u2022 Module 5: parameters: Missing required field 'watch'\n\n\u26a0\ufe0f  Warnings (should fix):\n   \u2022 Multiple trigger modules found\n     \ud83d\udca1 Consider using a single trigger or router\n\n\u2139\ufe0f  Information (consider):\n   \u2022 AI agent message without variable mapping\n     \ud83d\udca1 Use {{variable}} syntax to pass dynamic data\n   \u2022 Modules without error handlers: [4, 5]\n     \ud83d\udca1 Add error handlers for robust automation",
+    "is_valid": false
+  },
+  "setup_instructions": {
+    "gmail_account": "chris@cjsinsurancesolutions.com",
+    "label_to_monitor": "Sold deal",
+    "frequency": "Weekly (every 7 days)",
+    "batch_size": "5 emails per execution",
+    "output_format": "25x5 Referral fee for 1. ClientName \\ Agt: AgentName - ...",
+    "character_limit": 200,
+    "exclusions": [
+      "Christopher Shannahan",
+      "Chris Shannahan"
+    ]
+  }
+}

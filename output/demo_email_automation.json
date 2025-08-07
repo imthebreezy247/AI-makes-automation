@@ -1,0 +1,281 @@
+{
+  "automation": {
+    "name": "Gmail_Automation",
+    "description": "Monitor support@company.com emails and auto-reply to common questions",
+    "modules": [
+      {
+        "id": 1,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "watch": "emails",
+          "connection": "{{gmail_connection}}",
+          "folder": "INBOX",
+          "filter": "is:unread -label:processed",
+          "maxResults": 10,
+          "markAsRead": false
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 0,
+            "y": 0
+          },
+          "restore": {
+            "parameters": {
+              "folder": {
+                "label": "INBOX"
+              },
+              "watch": {
+                "label": "Emails"
+              }
+            }
+          },
+          "expect": [
+            {
+              "name": "id",
+              "type": "text",
+              "label": "Message ID"
+            },
+            {
+              "name": "threadId",
+              "type": "text",
+              "label": "Thread ID"
+            },
+            {
+              "name": "subject",
+              "type": "text",
+              "label": "Subject"
+            },
+            {
+              "name": "from",
+              "type": "text",
+              "label": "From"
+            },
+            {
+              "name": "body",
+              "type": "text",
+              "label": "Body"
+            }
+          ],
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "sendEmail": true,
+          "connection": "{{gmail_connection}}",
+          "to": "{{1.from}}",
+          "subject": "Re: {{1.subject}}",
+          "content": "{{2.response}}",
+          "contentType": "text/html"
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 900,
+            "y": 0
+          },
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "module": "builtin:datastore",
+        "version": 1,
+        "parameters": {
+          "action": "add",
+          "dataStructure": "automation_log"
+        },
+        "mapper": {
+          "data": {
+            "timestamp": "{{now}}",
+            "scenario_id": "{{scenario.id}}",
+            "execution_id": "{{execution.id}}",
+            "status": "success",
+            "details": "{{json(bundle)}}"
+          }
+        },
+        "metadata": {
+          "designer": {
+            "x": 1500,
+            "y": 0
+          },
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "name": "gmail_connection",
+        "type": "gmail",
+        "description": "Gmail API connection for email operations"
+      }
+    ],
+    "error_handling": "comprehensive",
+    "testing": true
+  },
+  "blueprint": {
+    "name": "Gmail_Automation",
+    "flow": [
+      {
+        "id": 1,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "watch": "emails",
+          "connection": "{{gmail_connection}}",
+          "folder": "INBOX",
+          "filter": "is:unread -label:processed",
+          "maxResults": 10,
+          "markAsRead": false
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 0,
+            "y": 0
+          },
+          "restore": {
+            "parameters": {
+              "folder": {
+                "label": "INBOX"
+              },
+              "watch": {
+                "label": "Emails"
+              }
+            }
+          },
+          "expect": [
+            {
+              "name": "id",
+              "type": "text",
+              "label": "Message ID"
+            },
+            {
+              "name": "threadId",
+              "type": "text",
+              "label": "Thread ID"
+            },
+            {
+              "name": "subject",
+              "type": "text",
+              "label": "Subject"
+            },
+            {
+              "name": "from",
+              "type": "text",
+              "label": "From"
+            },
+            {
+              "name": "body",
+              "type": "text",
+              "label": "Body"
+            }
+          ],
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "module": "gmail",
+        "version": 1,
+        "parameters": {
+          "sendEmail": true,
+          "connection": "{{gmail_connection}}",
+          "to": "{{1.from}}",
+          "subject": "Re: {{1.subject}}",
+          "content": "{{2.response}}",
+          "contentType": "text/html"
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 900,
+            "y": 0
+          },
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      },
+      {
+        "id": 3,
+        "module": "builtin:datastore",
+        "version": 1,
+        "parameters": {
+          "action": "add",
+          "dataStructure": "automation_log"
+        },
+        "mapper": {
+          "data": {
+            "timestamp": "{{now}}",
+            "scenario_id": "{{scenario.id}}",
+            "execution_id": "{{execution.id}}",
+            "status": "success",
+            "details": "{{json(bundle)}}"
+          }
+        },
+        "metadata": {
+          "designer": {
+            "x": 1500,
+            "y": 0
+          },
+          "errorHandlers": [
+            {
+              "type": "ignore",
+              "resume": true,
+              "retryAttempts": 3,
+              "retryInterval": 60
+            }
+          ]
+        }
+      }
+    ],
+    "metadata": {
+      "version": 1,
+      "scenario": "Gmail_Automation",
+      "designer": {
+        "orphaned": false
+      },
+      "zone": "us1.make.com"
+    }
+  },
+  "validation": "\ud83d\udcca Validation Summary:\n   Errors: 1\n   Warnings: 1\n   Info: 0\n\n\u274c Errors (must fix):\n   \u2022 Module 2: parameters: Missing required field 'watch'\n\n\u26a0\ufe0f  Warnings (should fix):\n   \u2022 Multiple trigger modules found\n     \ud83d\udca1 Consider using a single trigger or router\n"
+}
