@@ -1,0 +1,494 @@
+{
+    "flow": [
+        {
+            "id": 1,
+            "module": "gateway:CustomWebHook",
+            "version": 1,
+            "parameters": {
+                "hook": 523456,
+                "maxResults": 1
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": {
+                    "x": 0,
+                    "y": 0
+                },
+                "restore": {
+                    "parameters": {
+                        "hook": {
+                            "value": "Run Weekly (Every Monday at 9:00 AM EST)",
+                            "nested": []
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "hook",
+                        "type": "hook:gateway-webhook",
+                        "label": "Webhook",
+                        "required": true
+                    }
+                ]
+            }
+        },
+        {
+            "id": 2,
+            "module": "builtin:BasicFeeder",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "array": [
+                    {
+                        "runDate": "{{formatDate(now; \"YYYY-MM-DD\"; \"America/New_York\")}}",
+                        "weeklyRunId": "{{uuid}}",
+                        "searchWindow": "8d"
+                    }
+                ]
+            },
+            "metadata": {
+                "designer": {
+                    "x": 300,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 3,
+            "module": "google-email:SearchMessages",
+            "version": 1,
+            "parameters": {
+                "account": 12345
+            },
+            "mapper": {
+                "q": "label:Sold newer_than:{{2.searchWindow}}",
+                "limit": "200"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 600,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 4,
+            "module": "builtin:BasicIterator",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "array": "{{3.messages}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 900,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 5,
+            "module": "google-email:getMessage",
+            "version": 1,
+            "parameters": {
+                "account": 12345
+            },
+            "mapper": {
+                "id": "{{4.id}}",
+                "format": "full",
+                "metadataHeaders": []
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1200,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 6,
+            "module": "util:SetVariable2",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "name": "extractedDeals",
+                "scope": "roundtrip",
+                "value": "{{replace(replace(5.`text content`; \"/(?i)^\\s*([A-Z][A-Za-z'\\-]+\\s+[A-Z][A-Za-z'\\-]+)\\s*\\\\\\s*Agt[:\\-]?\\s*([A-Za-z][A-Za-z .'-]{1,40})/gm\"; \"$1|$2\"); \"/\\n+/g\"; \"\n\")}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1500,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 7,
+            "module": "openai-gpt:CreateCompletion",
+            "version": 1,
+            "parameters": {
+                "apiKey": 67890
+            },
+            "mapper": {
+                "model": "gpt-4o",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "Extract all client deals from the email. Format EXACTLY as:\nClient First Last \\ Agt: Agent Name\n\nRules:\n1. Skip any where agent is Chris Shanahan or Chris Shannahan\n2. Proper case all names\n3. One deal per line\n4. No numbering or bullets"
+                    },
+                    {
+                        "role": "user",
+                        "content": "{{5.`text content`}}"
+                    }
+                ],
+                "maxTokens": "500",
+                "temperature": "0.1"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 1800,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 8,
+            "module": "util:TextParser",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "text": "{{7.result}}",
+                "pattern": "^(.+?)\\s+(.+?)\\s*\\\\\\s*Agt:\\s*(.+)$",
+                "global": true,
+                "multiline": true,
+                "caseInsensitive": false,
+                "singleLine": false
+            },
+            "metadata": {
+                "designer": {
+                    "x": 2100,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 9,
+            "module": "builtin:BasicIterator",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "array": "{{8.matches}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 2400,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 10,
+            "module": "builtin:BasicFeeder",
+            "version": 1,
+            "parameters": {},
+            "filter": {
+                "name": "Exclude Chris",
+                "conditions": [
+                    [
+                        {
+                            "a": "{{lower(9.$3)}}",
+                            "b": "chris shanahan",
+                            "o": "text:notcontain"
+                        }
+                    ],
+                    [
+                        {
+                            "a": "{{lower(9.$3)}}",
+                            "b": "chris shannahan",
+                            "o": "text:notcontain"
+                        }
+                    ]
+                ]
+            },
+            "mapper": {
+                "array": [
+                    {
+                        "clientFirst": "{{9.$1}}",
+                        "clientLast": "{{9.$2}}",
+                        "agent": "{{9.$3}}",
+                        "emailId": "{{5.`Gmail Message ID`}}",
+                        "emailUrl": "{{5.`Message Link`}}",
+                        "runDate": "{{2.runDate}}",
+                        "weeklyRunId": "{{2.weeklyRunId}}"
+                    }
+                ]
+            },
+            "metadata": {
+                "designer": {
+                    "x": 2700,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 11,
+            "module": "builtin:BasicAggregator",
+            "version": 1,
+            "parameters": {
+                "feeder": 10
+            },
+            "mapper": {
+                "groupBy": "{{10.weeklyRunId}}",
+                "rowItems": [
+                    "{{10.clientFirst}}",
+                    "{{10.clientLast}}",
+                    "{{10.agent}}",
+                    "{{10.emailId}}",
+                    "{{10.emailUrl}}",
+                    "{{10.runDate}}"
+                ]
+            },
+            "metadata": {
+                "designer": {
+                    "x": 3000,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 12,
+            "module": "util:SetVariable2",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "name": "allDeals",
+                "scope": "roundtrip",
+                "value": "{{11.array}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 3300,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 13,
+            "module": "tools:Repeater",
+            "version": 1,
+            "parameters": {
+                "limit": "{{ceil(length(12.value) / 5)}}"
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": {
+                    "x": 3600,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 14,
+            "module": "util:SetVariable2",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "name": "batchDeals",
+                "scope": "roundtrip",
+                "value": "{{slice(12.value; (13.i - 1) * 5; 13.i * 5)}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 3900,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 15,
+            "module": "util:SetVariable2",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "name": "batchId",
+                "scope": "roundtrip",
+                "value": "{{2.weeklyRunId}}-{{13.i}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 4200,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 16,
+            "module": "util:TextAggregator",
+            "version": 1,
+            "parameters": {
+                "feeder": 14,
+                "separator": " -\n",
+                "rowSeparator": "\n"
+            },
+            "mapper": {
+                "value": "{{14.i}}. {{14.value.clientFirst}} {{14.value.clientLast}} \\ Agt: {{14.value.agent}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 4500,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 17,
+            "module": "util:SetVariable2",
+            "version": 1,
+            "parameters": {},
+            "mapper": {
+                "name": "zelleText",
+                "scope": "roundtrip",
+                "value": "{{substring(\"25x5 Referral fee for\n\" + 16.text; 0; 200)}}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 4800,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 18,
+            "module": "google-sheets:addRows",
+            "version": 2,
+            "parameters": {
+                "from": 14,
+                "select": "enter",
+                "spreadsheetId": "{{`Enter your Google Sheets ID here`}}",
+                "sheetId": "Ledger",
+                "insertDataOption": "INSERT_ROWS",
+                "valueInputOption": "USER_ENTERED",
+                "insertUnformatted": false
+            },
+            "mapper": {
+                "values": [
+                    "{{2.runDate}}",
+                    "{{15.value}}",
+                    "{{14.i}}",
+                    "{{14.value.clientFirst}}",
+                    "{{14.value.clientLast}}",
+                    "{{14.value.agent}}",
+                    "{{14.value.emailId}}",
+                    "{{14.value.emailUrl}}",
+                    "Recorded & Set to Pay",
+                    "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\"; \"America/New_York\")}}"
+                ]
+            },
+            "metadata": {
+                "designer": {
+                    "x": 5100,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 19,
+            "module": "google-sheets:addRow",
+            "version": 2,
+            "parameters": {
+                "select": "enter",
+                "spreadsheetId": "{{`Enter your Google Sheets ID here`}}",
+                "sheetId": "Weekly Batches",
+                "insertDataOption": "INSERT_ROWS",
+                "valueInputOption": "USER_ENTERED",
+                "insertUnformatted": false
+            },
+            "mapper": {
+                "values": [
+                    "{{2.runDate}}",
+                    "{{15.value}}",
+                    "{{17.value}}",
+                    "{{length(14.value)}}",
+                    "{{join(map(14.value; \"emailId\"); \",\")}}"
+                ]
+            },
+            "metadata": {
+                "designer": {
+                    "x": 5400,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 20,
+            "module": "google-sheets:addRows",
+            "version": 2,
+            "parameters": {
+                "from": 14,
+                "select": "enter",
+                "spreadsheetId": "{{`Enter your Google Sheets ID here`}}",
+                "sheetId": "Taxes",
+                "insertDataOption": "INSERT_ROWS",
+                "valueInputOption": "USER_ENTERED",
+                "insertUnformatted": false
+            },
+            "mapper": {
+                "values": [
+                    "{{2.runDate}}",
+                    "{{14.value.clientFirst}} {{14.value.clientLast}}",
+                    "{{14.value.agent}}",
+                    "25x5",
+                    "25",
+                    "{{15.value}}",
+                    "Auto-logged from Sold → Recorded/Set to Pay"
+                ]
+            },
+            "metadata": {
+                "designer": {
+                    "x": 5700,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 21,
+            "module": "google-email:modifyLabels",
+            "version": 1,
+            "parameters": {
+                "account": 12345
+            },
+            "mapper": {
+                "id": "{{distinct(map(12.value; \"emailId\"))}}",
+                "removeLabelIds": ["LABEL_ID_FOR_SOLD"],
+                "addLabelIds": ["LABEL_ID_FOR_RECORDED", "LABEL_ID_FOR_SET_TO_PAY"]
+            },
+            "metadata": {
+                "designer": {
+                    "x": 6000,
+                    "y": 0
+                }
+            }
+        }
+    ],
+    "metadata": {
+        "version": 1,
+        "scenario": {
+            "name": "Weekly Sold → Set-to-Pay Logger",
+            "schedule": {
+                "type": "interval",
+                "interval": {
+                    "type": "week",
+                    "value": 1,
+                    "time": "09:00",
+                    "days": ["monday"]
+                }
+            },
+            "flow": {
+                "throttle": {
+                    "mode": "manual",
+                    "value": 1
+                }
+            }
+        }
+    }
+}
