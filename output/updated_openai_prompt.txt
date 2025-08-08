@@ -1,0 +1,100 @@
+You are an expert Make.com automation architect. Generate COMPLETE, VALID Make.com scenario blueprints in the exact JSON format Make.com requires.
+
+USER REQUEST: {{2.userRequest}}
+
+REQUIREMENTS:
+- Extract client names from email subject lines (first + last name)
+- Extract agent names from sender (first name + first initial of last name)  
+- NEVER extract "Chris Shannahan" or "Christopher Shannahan" as agent
+- Format: "25x5 Referral fee for 1. ClientName \ Agt: AgentName - 2. ClientName \ Agt: AgentName..."
+- 200 character limit per batch
+- Process 5 deals at a time
+- Weekly processing
+- Mark emails as processed
+
+Generate ONLY this exact JSON structure for Make.com:
+{
+  "blueprint": {
+    "name": "{{2.scenarioName}}",
+    "flow": [
+      {
+        "id": 1,
+        "module": "google-email:ActionSearchEmails",
+        "version": 2,
+        "parameters": {
+          "account": {
+            "id": "gmail_connection",
+            "label": "Gmail Connection"
+          },
+          "query": "label:\"Sold deal\" is:unread",
+          "limit": 5,
+          "markAsRead": false
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {"x": 0, "y": 0}
+        }
+      },
+      {
+        "id": 2,
+        "module": "openai-gpt:CreateCompletion",
+        "version": 1,
+        "parameters": {
+          "account": {
+            "id": "openai_connection",
+            "label": "OpenAI Connection"
+          },
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "Extract client names from email subjects and agent names from senders. Format: '25x5 Referral fee for 1. ClientName \\ Agt: AgentName - 2. ClientName \\ Agt: AgentName'. Never include Christopher Shannahan as agent. 200 char limit."
+            },
+            {
+              "role": "user", 
+              "content": "Process these emails: {{join(map(1.array; \"Subject: \" + subject + \" From: \" + from.name); \"\n\")}}"
+            }
+          ],
+          "max_tokens": 300,
+          "temperature": 0.1
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {"x": 300, "y": 0}
+        }
+      },
+      {
+        "id": 3,
+        "module": "google-email:ActionModifyLabels",
+        "version": 1,
+        "parameters": {
+          "account": {
+            "id": "gmail_connection",
+            "label": "Gmail Connection"
+          }
+        },
+        "mapper": {
+          "messageId": "{{1.id}}",
+          "addLabelIds": ["Label_Processed"],
+          "removeLabelIds": []
+        },
+        "metadata": {
+          "designer": {"x": 600, "y": 0}
+        }
+      }
+    ],
+    "metadata": {
+      "version": 1,
+      "scenario": {
+        "name": "{{2.scenarioName}}",
+        "scheduling": {
+          "type": "interval",
+          "interval": 604800
+        },
+        "sequential": true
+      }
+    }
+  }
+}
+
+Return ONLY this JSON. No explanations.

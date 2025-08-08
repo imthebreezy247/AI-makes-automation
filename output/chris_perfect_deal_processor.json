@@ -1,0 +1,213 @@
+{
+  "blueprint": {
+    "name": "Chris Deal Processor - Perfect Format",
+    "flow": [
+      {
+        "id": 1,
+        "module": "builtin:BasicScheduler", 
+        "version": 1,
+        "parameters": {
+          "interval": 604800,
+          "startDate": "2024-01-01",
+          "time": "09:00"
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {"x": -200, "y": 0}
+        },
+        "note": "Weekly trigger - Mondays at 9 AM"
+      },
+      {
+        "id": 2,
+        "module": "google-email:ActionSearchEmails",
+        "version": 2,
+        "parameters": {
+          "account": {
+            "id": "gmail_chris_connection",
+            "label": "chris@cjsinsurancesolutions.com"
+          },
+          "query": "label:\"Sold deal\" is:unread",
+          "limit": 5,
+          "markAsRead": false
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {"x": 100, "y": 0}
+        },
+        "note": "Search for unread Sold deal emails - 5 at a time"
+      },
+      {
+        "id": 3,
+        "module": "builtin:BasicFilter",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "condition": "{{length(2.array)}}"
+        },
+        "metadata": {
+          "designer": {"x": 400, "y": 0},
+          "filter": {
+            "conditions": [
+              {
+                "a": "{{length(2.array)}}",
+                "o": "number:greater",
+                "b": "0"
+              }
+            ]
+          }
+        },
+        "note": "Only proceed if emails found"
+      },
+      {
+        "id": 4,
+        "module": "openai-gpt:CreateCompletion",
+        "version": 1,
+        "parameters": {
+          "account": {
+            "id": "openai_connection",
+            "label": "OpenAI Connection"
+          },
+          "model": "gpt-4o-mini",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a deal processor for Chris's insurance business. Extract client names from email subjects and agent names from senders.\n\nRULES:\n1. Client name: Extract first and last name from subject line\n2. Agent name: Extract sender's first name + first initial of last name\n3. NEVER extract 'Christopher Shannahan' or 'Chris Shannahan' as agent\n4. Format EXACTLY as: '25x5 Referral fee for 1. [Client] \\ Agt: [Agent] - 2. [Client] \\ Agt: [Agent]...'\n5. Keep under 200 characters total\n6. Process exactly {{length(2.array)}} deals in this batch"
+            },
+            {
+              "role": "user",
+              "content": "Process these {{length(2.array)}} emails into the required format:\n\n{{join(map(2.array; \"Email \" + toString($index + 1) + \":\nSubject: \" + subject + \"\nFrom: \" + from.name + \" <\" + from.address + \">\n\"); \"\n\")}}"
+            }
+          ],
+          "max_tokens": 300,
+          "temperature": 0.1,
+          "n": 1
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {"x": 700, "y": 0}
+        },
+        "note": "AI processes emails into 200-char format"
+      },
+      {
+        "id": 5,
+        "module": "util:SetVariables",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "variables": [
+            {
+              "name": "formattedDeals",
+              "value": "{{4.choices[1].message.content}}"
+            },
+            {
+              "name": "processedCount",
+              "value": "{{length(2.array)}}"
+            },
+            {
+              "name": "timestamp",
+              "value": "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}"
+            }
+          ],
+          "scope": "roundtrip"
+        },
+        "metadata": {
+          "designer": {"x": 1000, "y": 0}
+        }
+      },
+      {
+        "id": 6,
+        "module": "builtin:BasicFeeder",
+        "version": 1,
+        "parameters": {},
+        "mapper": {
+          "array": "{{2.array}}"
+        },
+        "metadata": {
+          "designer": {"x": 1300, "y": 0}
+        },
+        "note": "Feed each email individually for labeling"
+      },
+      {
+        "id": 7,
+        "module": "google-email:ActionModifyLabels",
+        "version": 1,
+        "parameters": {
+          "account": {
+            "id": "gmail_chris_connection",
+            "label": "chris@cjsinsurancesolutions.com"
+          }
+        },
+        "mapper": {
+          "messageId": "{{6.id}}",
+          "addLabelIds": ["Label_Processed"],
+          "removeLabelIds": []
+        },
+        "metadata": {
+          "designer": {"x": 1600, "y": 0}
+        },
+        "note": "Mark each email as processed"
+      },
+      {
+        "id": 8,
+        "module": "google-docs:CreateADocument",
+        "version": 2,
+        "parameters": {
+          "account": {
+            "id": "gdrive_connection",
+            "label": "Google Drive Connection"
+          },
+          "folderId": "/",
+          "document": {
+            "title": "Deal Batch - {{formatDate(now; \"YYYY-MM-DD\")}}",
+            "content": "{{5.formattedDeals}}\n\n--- BATCH DETAILS ---\nProcessed: {{5.timestamp}}\nEmails processed: {{5.processedCount}}\nNext batch: Next Monday 9 AM\n\n--- RAW EMAIL DATA ---\n{{join(map(2.array; \"Subject: \" + subject + \"\nFrom: \" + from.name + \"\nDate: \" + date + \"\n---\"); \"\n\")}}"
+          }
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {"x": 1900, "y": 0}
+        },
+        "note": "Save formatted deals to Google Doc"
+      },
+      {
+        "id": 9,
+        "module": "google-email:ActionSendEmail",
+        "version": 2,
+        "parameters": {
+          "account": {
+            "id": "gmail_chris_connection",
+            "label": "chris@cjsinsurancesolutions.com"
+          }
+        },
+        "mapper": {
+          "to": [
+            {
+              "address": "chris@cjsinsurancesolutions.com",
+              "name": "Chris Shannahan"
+            }
+          ],
+          "subject": "✅ Weekly Deal Batch Processed - {{5.processedCount}} Deals",
+          "html": "<h2>Deal Batch Complete!</h2><p><strong>Formatted Output (200 char):</strong></p><p style='background:#f0f0f0; padding:10px; font-family:monospace;'>{{5.formattedDeals}}</p><hr><p><strong>Details:</strong></p><ul><li>Emails processed: {{5.processedCount}}</li><li>Processed at: {{5.timestamp}}</li><li>Next batch: Next Monday 9 AM</li></ul><p><em>All emails have been marked as processed.</em></p>"
+        },
+        "metadata": {
+          "designer": {"x": 2200, "y": 0}
+        },
+        "note": "Email Chris the formatted results"
+      }
+    ],
+    "metadata": {
+      "version": 1,
+      "scenario": {
+        "name": "Chris Deal Processor - Perfect Format",
+        "description": "Processes Sold deal emails weekly, extracts client/agent names, formats for 200-char limit, saves to Google Docs",
+        "scheduling": {
+          "type": "interval",
+          "interval": 604800,
+          "time": "09:00"
+        },
+        "sequential": true,
+        "confidential": false,
+        "dataloss": false
+      }
+    }
+  }
+}
