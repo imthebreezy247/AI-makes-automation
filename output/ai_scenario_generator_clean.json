@@ -1,0 +1,320 @@
+{
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": 123456,
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
+        },
+        "restore": {
+          "parameters": {
+            "hook": {
+              "data": {
+                "editable": "true"
+              },
+              "label": "AI Scenario Generator Webhook"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway-webhook",
+            "label": "Webhook",
+            "required": true
+          }
+        ],
+        "expect": [
+          {
+            "name": "automation_description",
+            "type": "text",
+            "label": "What automation do you want to create?",
+            "required": true
+          },
+          {
+            "name": "user_email",
+            "type": "email",
+            "label": "Your email for notifications",
+            "required": false
+          },
+          {
+            "name": "scenario_name",
+            "type": "text",
+            "label": "Scenario name (optional)",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "userRequest",
+        "scope": "roundtrip",
+        "value": "{{1.automation_description}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "scenarioName",
+        "scope": "roundtrip",
+        "value": "{{if(1.scenario_name; 1.scenario_name; \"AI Generated - \" + substring(1.automation_description; 1; 50))}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 4,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "timestamp",
+        "scope": "roundtrip",
+        "value": "{{formatDate(now; \"YYYY-MM-DD-HH-mm-ss\")}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 900,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 5,
+      "module": "openai-gpt:CreateCompletion",
+      "version": 1,
+      "parameters": {
+        "account": 78910
+      },
+      "mapper": {
+        "model": "gpt-4o",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are an expert Make.com automation architect. Generate complete, working Make.com scenario blueprints in JSON format.\n\nYour task:\n1. Analyze the user's automation request\n2. Design the optimal module flow\n3. Generate complete JSON blueprint with all configurations\n4. Include proper connections, mappings, and error handling\n5. Use realistic module IDs and proper Make.com syntax\n\nAvailable modules:\n- gmail/google-email: Search emails, send emails, modify labels\n- google-sheets: Add/update rows, read spreadsheets\n- google-docs: Create/update documents\n- openai-gpt: AI processing and analysis\n- util: Set variables, text aggregator, basic feeder\n- http: Make HTTP requests (Enterprise)\n- mysql: Database operations\n- builtin: Filters, routers, basic operations\n- gateway: Webhooks, triggers\n\nResponse format: Return ONLY valid JSON blueprint structure matching Make.com format. No explanations, just the JSON."
+          },
+          {
+            "role": "user",
+            "content": "Create a Make.com automation for: {{2.value}}\n\nScenario name: {{3.value}}\nGeneration timestamp: {{4.value}}\n\nGenerate the complete JSON blueprint ready for deployment."
+          }
+        ],
+        "max_tokens": 4000,
+        "temperature": 0.2,
+        "n": 1
+      },
+      "metadata": {
+        "designer": {
+          "x": 1200,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 6,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "generatedBlueprint",
+        "scope": "roundtrip",
+        "value": "{{5.choices[1].message.content}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 1500,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 7,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "blueprintValid",
+        "scope": "roundtrip",
+        "value": "{{if(contains(6.value; \"flow\"); \"true\"; \"false\")}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 1800,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 8,
+      "module": "builtin:BasicFilter",
+      "version": 1,
+      "parameters": {},
+      "filter": {
+        "name": "Blueprint Generated Successfully",
+        "conditions": [
+          [
+            {
+              "a": "{{7.value}}",
+              "b": "true",
+              "o": "text:equal"
+            }
+          ]
+        ]
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 2100,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 9,
+      "module": "google-sheets:addRow",
+      "version": 2,
+      "parameters": {
+        "account": 11223,
+        "spreadsheetId": "Enter_Your_Spreadsheet_ID_Here",
+        "sheetId": "Generated_Scenarios",
+        "includesHeaders": true,
+        "insertDataOption": "INSERT_ROWS",
+        "valueInputOption": "USER_ENTERED",
+        "insertUnformatted": false
+      },
+      "mapper": {
+        "values": [
+          "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}",
+          "{{1.automation_description}}",
+          "{{3.value}}",
+          "Generated Successfully",
+          "{{6.value}}"
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 2400,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 10,
+      "module": "google-email:ActionSendEmail",
+      "version": 2,
+      "parameters": {
+        "account": 44556
+      },
+      "mapper": {
+        "to": [
+          {
+            "address": "{{if(1.user_email; 1.user_email; \"user@example.com\")}}",
+            "name": "Automation User"
+          }
+        ],
+        "subject": "✅ Your Make.com Scenario Blueprint is Ready: {{3.value}}",
+        "html": "<h2>Your Automation Blueprint is Ready!</h2>\n<p><strong>Request:</strong> {{1.automation_description}}</p>\n<p><strong>Scenario Name:</strong> {{3.value}}</p>\n<p><strong>Generated At:</strong> {{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}</p>\n<hr>\n<p><strong>Blueprint JSON:</strong></p>\n<pre style=\"background:#f5f5f5;padding:10px;border-radius:5px;\">{{6.value}}</pre>\n<hr>\n<p><strong>Next Steps:</strong></p>\n<ol>\n<li>Copy the JSON blueprint above</li>\n<li>Go to Make.com and create a new scenario</li>\n<li>Import the blueprint JSON</li>\n<li>Set up required connections</li>\n<li>Test and enable your automation</li>\n</ol>\n<p><em>Generated by AI Scenario Generator</em></p>"
+      },
+      "metadata": {
+        "designer": {
+          "x": 2700,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 11,
+      "module": "google-sheets:addRow",
+      "version": 2,
+      "parameters": {
+        "account": 11223,
+        "spreadsheetId": "Enter_Your_Spreadsheet_ID_Here",
+        "sheetId": "Generated_Scenarios",
+        "includesHeaders": true,
+        "insertDataOption": "INSERT_ROWS",
+        "valueInputOption": "USER_ENTERED",
+        "insertUnformatted": false
+      },
+      "mapper": {
+        "values": [
+          "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}",
+          "{{1.automation_description}}",
+          "{{3.value}}",
+          "Generation Failed",
+          "Blueprint validation failed"
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 2100,
+          "y": 300
+        }
+      }
+    },
+    {
+      "id": 12,
+      "module": "google-email:ActionSendEmail",
+      "version": 2,
+      "parameters": {
+        "account": 44556
+      },
+      "mapper": {
+        "to": [
+          {
+            "address": "{{if(1.user_email; 1.user_email; \"user@example.com\")}}",
+            "name": "Automation User"
+          }
+        ],
+        "subject": "❌ Scenario Generation Failed: {{3.value}}",
+        "html": "<h2>Scenario Generation Failed</h2>\n<p><strong>Request:</strong> {{1.automation_description}}</p>\n<p><strong>Scenario Name:</strong> {{3.value}}</p>\n<p><strong>Error:</strong> Blueprint generation failed validation</p>\n<p><strong>Time:</strong> {{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}</p>\n<hr>\n<p>Please try again with a more specific description of your automation requirements.</p>"
+      },
+      "metadata": {
+        "designer": {
+          "x": 2400,
+          "y": 300
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": false,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "us1.make.com"
+  }
+}
