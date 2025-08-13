@@ -1,0 +1,690 @@
+{
+  "flow": [
+    {
+      "id": 1,
+      "module": "trigger:Schedule",
+      "version": 1,
+      "parameters": {
+        "schedule": 78901
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
+        },
+        "restore": {
+          "parameters": {
+            "schedule": {
+              "label": "Daily at 8:30 AM ET",
+              "code": "0 30 8 * * *",
+              "tz": "America/New_York"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "runDate",
+        "scope": "roundtrip",
+        "value": "{{formatDate(now; \"YYYY-MM-DD\"; \"America/New_York\")}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "google-email:SearchMessages",
+      "version": 1,
+      "parameters": {
+        "account": 12345
+      },
+      "mapper": {
+        "q": "from:noreply@mail.uhcmemberhub.com subject:\"Customers with Payment Failure as of\" newer_than:7d -label:uhc-payment-failure/processed",
+        "limit": "50"
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 4,
+      "module": "builtin:BasicIterator",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "{{3.messages}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 900,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 5,
+      "module": "google-email:getMessage",
+      "version": 1,
+      "parameters": {
+        "account": 12345
+      },
+      "mapper": {
+        "id": "{{4.id}}",
+        "format": "full",
+        "metadataHeaders": []
+      },
+      "metadata": {
+        "designer": {
+          "x": 1200,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 6,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "sourceDate",
+        "scope": "roundtrip",
+        "value": "{{replace(5.Subject; \"/.*as of\\s+([\\d\\/]+).*/\"; \"$1\")}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 1500,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 7,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 1800,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 8,
+      "module": "google-email:downloadAttachments",
+      "version": 1,
+      "parameters": {
+        "account": 12345
+      },
+      "filter": {
+        "name": "Has CSV Attachment",
+        "conditions": [
+          [
+            {
+              "a": "{{length(5.Attachments)}}",
+              "b": "0",
+              "o": "number:greater"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "messageId": "{{5.`Gmail Message ID`}}",
+        "attachmentId": "{{first(map(filter(5.Attachments; \"name\"; \"text:contain\"; \".csv\"); \"attachmentId\"))}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 2100,
+          "y": -150
+        }
+      }
+    },
+    {
+      "id": 9,
+      "module": "csv:ParseCSV",
+      "version": 1,
+      "parameters": {
+        "csv": 1,
+        "delimiter": ",",
+        "headers": true,
+        "validateAddress": false,
+        "decimalSeparator": "."
+      },
+      "mapper": {
+        "csv": "{{8.data}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 2400,
+          "y": -150
+        }
+      }
+    },
+    {
+      "id": 10,
+      "module": "builtin:BasicIterator",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "{{9.array}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 2700,
+          "y": -150
+        }
+      }
+    },
+    {
+      "id": 11,
+      "module": "util:TextParser",
+      "version": 1,
+      "parameters": {
+        "type": "regex",
+        "global": true,
+        "multiline": true,
+        "caseInsensitive": true
+      },
+      "filter": {
+        "name": "Parse Email Body",
+        "conditions": [
+          [
+            {
+              "a": "{{length(5.Attachments)}}",
+              "b": "1",
+              "o": "number:less"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "pattern": "Policy\\s*ID[:\\s]+([A-Z0-9-]+).*?Name[:\\s]+(.+?)(?=Email|Phone|$).*?Email[:\\s]+([\\w\\.-]+@[\\w\\.-]+\\.\\w+).*?Phone[:\\s]+([\\d\\s\\(\\)\\-\\.]+).*?Premium[:\\s]+\\$?([\\d,]+(?:\\.\\d{2})?)",
+        "text": "{{5.`Text content`}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 2100,
+          "y": 150
+        }
+      }
+    },
+    {
+      "id": 12,
+      "module": "builtin:BasicIterator",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "array": "{{11.matches}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 2400,
+          "y": 150
+        }
+      }
+    },
+    {
+      "id": 13,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "customerData",
+        "scope": "roundtrip",
+        "value": "{{if(10.`Policy ID`; {\"policyId\": 10.`Policy ID`, \"fullName\": 10.Name, \"email\": 10.Email, \"phone\": 10.Phone, \"premium\": 10.Premium}; {\"policyId\": 12.$1, \"fullName\": 12.$2, \"email\": 12.$3, \"phone\": 12.$4, \"premium\": 12.$5})}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 3000,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 14,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "firstName",
+        "scope": "roundtrip",
+        "value": "{{first(split(13.value.fullName; \" \"))}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 3300,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 15,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "lastName",
+        "scope": "roundtrip",
+        "value": "{{join(slice(split(13.value.fullName; \" \"); 1); \" \")}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 3600,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 16,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "cleanPhone",
+        "scope": "roundtrip",
+        "value": "{{replace(13.value.phone; \"/[^0-9]/g\"; \"\")}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 3900,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 17,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "cleanPremium",
+        "scope": "roundtrip",
+        "value": "{{parseNumber(replace(replace(13.value.premium; \"$\"; \"\"); \",\"; \"\"))}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 4200,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 18,
+      "module": "google-sheets:searchRows",
+      "version": 2,
+      "parameters": {
+        "account": 23456,
+        "spreadsheetId": "ENTER_YOUR_BOB_SPREADSHEET_ID",
+        "sheetId": "Book of Business",
+        "filter": [
+          [
+            {
+              "a": "PolicyID",
+              "b": "{{13.value.policyId}}",
+              "o": "text:equal"
+            }
+          ]
+        ],
+        "limit": "1",
+        "sortOrder": "asc"
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 4500,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 19,
+      "module": "google-sheets:searchRows",
+      "version": 2,
+      "parameters": {
+        "account": 23456,
+        "spreadsheetId": "ENTER_YOUR_BOB_SPREADSHEET_ID",
+        "sheetId": "Book of Business",
+        "filter": [
+          [
+            {
+              "a": "Email",
+              "b": "{{13.value.email}}",
+              "o": "text:equal"
+            }
+          ]
+        ],
+        "limit": "1",
+        "sortOrder": "asc"
+      },
+      "filter": {
+        "name": "No PolicyID Match",
+        "conditions": [
+          [
+            {
+              "a": "{{length(18.values)}}",
+              "b": "1",
+              "o": "number:less"
+            }
+          ]
+        ]
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 4800,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 20,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "bobPhone",
+        "scope": "roundtrip",
+        "value": "{{if(18.values[1].Phone; 18.values[1].Phone; if(19.values[1].Phone; 19.values[1].Phone; 16.value))}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 5100,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 21,
+      "module": "google-sheets:searchRows",
+      "version": 2,
+      "parameters": {
+        "account": 23456,
+        "spreadsheetId": "ENTER_YOUR_UHC_SPREADSHEET_ID",
+        "sheetId": "Backlist",
+        "filter": [
+          [
+            {
+              "a": "PolicyID",
+              "b": "{{13.value.policyId}}",
+              "o": "text:equal"
+            }
+          ]
+        ],
+        "limit": "1",
+        "sortOrder": "asc"
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 5400,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 22,
+      "module": "google-sheets:searchRows",
+      "version": 2,
+      "parameters": {
+        "account": 23456,
+        "spreadsheetId": "ENTER_YOUR_UHC_SPREADSHEET_ID",
+        "sheetId": "Backlist",
+        "filter": [
+          [
+            {
+              "a": "FullName",
+              "b": "{{13.value.fullName}}",
+              "o": "text:equal"
+            },
+            {
+              "a": "Phone",
+              "b": "{{20.value}}",
+              "o": "text:equal"
+            }
+          ]
+        ],
+        "limit": "1",
+        "sortOrder": "asc"
+      },
+      "filter": {
+        "name": "No PolicyID in Backlist",
+        "conditions": [
+          [
+            {
+              "a": "{{length(21.values)}}",
+              "b": "1",
+              "o": "number:less"
+            }
+          ]
+        ]
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 5700,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 23,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "isBacklisted",
+        "scope": "roundtrip",
+        "value": "{{if(or(length(21.values) > 0; length(22.values) > 0); true; false)}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 6000,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 24,
+      "module": "google-sheets:clearValues",
+      "version": 1,
+      "parameters": {
+        "account": 23456,
+        "spreadsheetId": "ENTER_YOUR_UHC_SPREADSHEET_ID",
+        "sheetId": "To Text - Today"
+      },
+      "mapper": {
+        "range": "A2:K1000"
+      },
+      "metadata": {
+        "designer": {
+          "x": 6300,
+          "y": -300,
+          "note": "Clear Today sheet once per run"
+        },
+        "parameters": {
+          "IMTRIGGER": {
+            "value": "{{4.i == 1}}"
+          }
+        }
+      }
+    },
+    {
+      "id": 25,
+      "module": "google-sheets:addRow",
+      "version": 2,
+      "parameters": {
+        "account": 23456,
+        "spreadsheetId": "ENTER_YOUR_UHC_SPREADSHEET_ID",
+        "sheetId": "To Text - Today",
+        "includesHeaders": true,
+        "insertDataOption": "INSERT_ROWS",
+        "valueInputOption": "USER_ENTERED",
+        "insertUnformatted": false
+      },
+      "filter": {
+        "name": "Not Backlisted",
+        "conditions": [
+          [
+            {
+              "a": "{{23.value}}",
+              "b": "false",
+              "o": "equal"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "values": [
+          "{{2.value}}",
+          "{{6.value}}",
+          "{{13.value.fullName}}",
+          "{{14.value}}",
+          "{{15.value}}",
+          "{{13.value.email}}",
+          "{{20.value}}",
+          "{{13.value.policyId}}",
+          "{{17.value}}",
+          "UnitedHealthcare (UHOne)",
+          "New for texting"
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 6600,
+          "y": -150
+        }
+      }
+    },
+    {
+      "id": 26,
+      "module": "google-sheets:addRow",
+      "version": 2,
+      "parameters": {
+        "account": 23456,
+        "spreadsheetId": "ENTER_YOUR_UHC_SPREADSHEET_ID",
+        "sheetId": "Raw Inbox (history)",
+        "includesHeaders": true,
+        "insertDataOption": "INSERT_ROWS",
+        "valueInputOption": "USER_ENTERED",
+        "insertUnformatted": false
+      },
+      "mapper": {
+        "values": [
+          "{{2.value}}",
+          "{{6.value}}",
+          "{{13.value.fullName}}",
+          "{{14.value}}",
+          "{{15.value}}",
+          "{{13.value.email}}",
+          "{{20.value}}",
+          "{{13.value.policyId}}",
+          "{{17.value}}",
+          "UnitedHealthcare (UHOne)",
+          "{{if(23.value; \"Skipped - Backlist\"; \"Added to text list\")}}"
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 6600,
+          "y": 150
+        }
+      }
+    },
+    {
+      "id": 27,
+      "module": "google-sheets:addRow",
+      "version": 2,
+      "parameters": {
+        "account": 23456,
+        "spreadsheetId": "ENTER_YOUR_UHC_SPREADSHEET_ID",
+        "sheetId": "Backlist",
+        "includesHeaders": true,
+        "insertDataOption": "INSERT_ROWS",
+        "valueInputOption": "USER_ENTERED",
+        "insertUnformatted": false
+      },
+      "filter": {
+        "name": "Not Already Backlisted",
+        "conditions": [
+          [
+            {
+              "a": "{{23.value}}",
+              "b": "false",
+              "o": "equal"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "values": [
+          "{{2.value}}",
+          "{{6.value}}",
+          "{{13.value.fullName}}",
+          "{{14.value}}",
+          "{{15.value}}",
+          "{{13.value.email}}",
+          "{{20.value}}",
+          "{{13.value.policyId}}",
+          "{{17.value}}",
+          "UnitedHealthcare (UHOne)",
+          "Auto-added"
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 6900,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 28,
+      "module": "google-email:modifyLabels",
+      "version": 1,
+      "parameters": {
+        "account": 12345
+      },
+      "mapper": {
+        "id": "{{5.`Gmail Message ID`}}",
+        "addLabelIds": ["ENTER_YOUR_PROCESSED_LABEL_ID"]
+      },
+      "metadata": {
+        "designer": {
+          "x": 7200,
+          "y": 0
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "us1.make.com"
+  }
+}
