@@ -1,0 +1,338 @@
+{
+  "name": "Automated_ID_Card_Retrieval_System",
+  "description": "Monitors HealthSherpa enrollment emails and automatically retrieves ID cards from insurance carrier portals after 48-hour delay",
+  "version": "1.0.0",
+  "scenarios": {
+    "main_processor": {
+      "name": "Email_Processor_ID_Cards",
+      "description": "Processes incoming HealthSherpa emails and queues ID card retrieval",
+      "modules": [
+        {
+          "id": 1,
+          "type": "gmail:watch",
+          "name": "Watch_HealthSherpa_Emails",
+          "config": {
+            "connection": "chris@cjsinsurancesolutions.com",
+            "folder": "INBOX",
+            "filter": "from:no_reply@healthsherpa.com subject:\"Action required: Next steps to finalize your health insurance enrollment\"",
+            "maxResults": 10,
+            "markAsRead": true,
+            "addLabel": "ID_Card_Pending"
+          }
+        },
+        {
+          "id": 2,
+          "type": "text:parser",
+          "name": "Extract_Client_Data",
+          "config": {
+            "patterns": {
+              "client_name": "(?<=Hi ).*?(?=,)",
+              "deadline_date": "\\d{1,2}/\\d{1,2}/\\d{4}",
+              "carrier_indicator": "(Georgia Access|Ambetter|Oscar|BCBS|Blue Cross|Florida Blue)"
+            },
+            "input": "{{1.text}}"
+          }
+        },
+        {
+          "id": 3,
+          "type": "googlesheets:addRow",
+          "name": "Queue_ID_Card_Retrieval",
+          "config": {
+            "connection": "Google_Sheets_Connection",
+            "spreadsheetId": "YOUR_SHEET_ID",
+            "sheetName": "ID_Card_Queue",
+            "values": {
+              "A": "{{2.client_name}}",
+              "B": "{{1.from}}",
+              "C": "{{now}}",
+              "D": "{{addDays(now; 2)}}",
+              "E": "{{2.carrier_indicator}}",
+              "F": "pending",
+              "G": "",
+              "H": "",
+              "I": "{{1.id}}",
+              "J": "{{2.phone_number}}"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "type": "gmail:sendEmail",
+          "name": "Confirm_Processing",
+          "config": {
+            "to": "{{1.from}}",
+            "subject": "ID Card Request Received - Processing in 48 Hours",
+            "content": "Hi {{2.client_name}},\n\nWe've received your enrollment confirmation and will automatically retrieve your ID card in 48 hours.\n\nCarrier: {{2.carrier_indicator}}\nExpected Processing: {{addDays(now; 2)}}\n\nYou'll receive your ID card via email once it's available.\n\nBest regards,\nCJS Insurance Solutions",
+            "contentType": "text"
+          }
+        }
+      ]
+    },
+    "retrieval_processor": {
+      "name": "ID_Card_Retriever",
+      "description": "Runs hourly to process due ID card retrievals",
+      "schedule": "0 * * * *",
+      "modules": [
+        {
+          "id": 1,
+          "type": "googlesheets:searchRows",
+          "name": "Find_Due_Cards",
+          "config": {
+            "connection": "Google_Sheets_Connection",
+            "spreadsheetId": "YOUR_SHEET_ID",
+            "sheetName": "ID_Card_Queue",
+            "filter": "status = 'pending' AND retrieval_date <= NOW()"
+          }
+        },
+        {
+          "id": 2,
+          "type": "iterator",
+          "name": "Process_Each_Card",
+          "config": {
+            "array": "{{1.rows}}"
+          }
+        },
+        {
+          "id": 3,
+          "type": "router",
+          "name": "Route_By_Carrier",
+          "routes": [
+            {
+              "id": "route_1",
+              "label": "AMBETTER",
+              "filter": "{{2.carrier}} contains 'Ambetter'",
+              "modules": [
+                {
+                  "id": "3.1",
+                  "type": "http:request",
+                  "name": "Retrieve_Ambetter_Card",
+                  "config": {
+                    "url": "https://member.ambetter.com/api/idcard",
+                    "method": "POST",
+                    "headers": {
+                      "Authorization": "{{datastore.ambetter_token}}",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "member_name": "{{2.client_name}}",
+                      "policy_number": "{{2.policy_number}}"
+                    }
+                  }
+                },
+                {
+                  "id": "3.2",
+                  "type": "http:download",
+                  "name": "Download_Ambetter_PDF",
+                  "config": {
+                    "url": "{{3.1.pdf_url}}"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "route_2",
+              "label": "OSCAR",
+              "filter": "{{2.carrier}} contains 'Oscar'",
+              "modules": [
+                {
+                  "id": "3.3",
+                  "type": "http:webhook",
+                  "name": "Trigger_Oscar_Selenium",
+                  "config": {
+                    "url": "https://your-automation-server.com/retrieve_oscar",
+                    "method": "POST",
+                    "body": {
+                      "client_name": "{{2.client_name}}",
+                      "member_id": "{{2.member_id}}"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "route_3",
+              "label": "BCBS_GA",
+              "filter": "{{2.carrier}} contains 'BCBS' AND {{2.state}} = 'GA'",
+              "modules": [
+                {
+                  "id": "3.4",
+                  "type": "http:customApi",
+                  "name": "BCBS_GA_Portal",
+                  "config": {
+                    "baseUrl": "https://www.bcbsga.com",
+                    "endpoint": "/member/idcards",
+                    "authentication": "oauth2",
+                    "credentials": "{{datastore.bcbs_ga_creds}}"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "route_4",
+              "label": "BCBS_FL",
+              "filter": "{{2.carrier}} contains 'Florida Blue'",
+              "modules": [
+                {
+                  "id": "3.5",
+                  "type": "http:customApi",
+                  "name": "BCBS_FL_Portal",
+                  "config": {
+                    "baseUrl": "https://www.floridablue.com",
+                    "endpoint": "/members/documents/idcard",
+                    "authentication": "oauth2",
+                    "credentials": "{{datastore.bcbs_fl_creds}}"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "route_5",
+              "label": "Manual_Required",
+              "filter": "default",
+              "modules": [
+                {
+                  "id": "3.6",
+                  "type": "googlesheets:updateRow",
+                  "name": "Mark_Manual_Required",
+                  "config": {
+                    "spreadsheetId": "YOUR_SHEET_ID",
+                    "sheetName": "Manual_ID_Cards",
+                    "values": {
+                      "status": "manual_required",
+                      "error_notes": "Automated retrieval not available for this carrier"
+                    }
+                  }
+                },
+                {
+                  "id": "3.7",
+                  "type": "slack:sendMessage",
+                  "name": "Alert_Manual_Team",
+                  "config": {
+                    "channel": "#id-cards-manual",
+                    "text": "Manual ID card retrieval needed for {{2.client_name}} - Carrier: {{2.carrier}}"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "gmail:sendEmail",
+          "name": "Send_ID_Card_Email",
+          "config": {
+            "to": "{{2.client_email}}",
+            "subject": "Your {{2.carrier}} Health Insurance ID Card",
+            "content": "Dear {{2.client_name}},\n\nYour health insurance ID card is attached to this email.\n\nCarrier: {{2.carrier}}\nPolicy Effective Date: {{2.effective_date}}\n\nPlease save this ID card for your records. You can present it at your healthcare provider or pharmacy.\n\nImportant reminders:\n- Keep a copy on your phone for easy access\n- Some providers may accept digital copies\n- Contact us if you need assistance accessing care\n\nBest regards,\nCJS Insurance Solutions\n706-388-4513",
+            "attachments": [
+              {
+                "fileName": "{{2.client_name}}_ID_Card.pdf",
+                "data": "{{3.pdf_data}}"
+              }
+            ]
+          }
+        },
+        {
+          "id": 5,
+          "type": "googlesheets:updateRow",
+          "name": "Update_Status_Complete",
+          "config": {
+            "spreadsheetId": "YOUR_SHEET_ID",
+            "rowNumber": "{{2.row_number}}",
+            "values": {
+              "F": "completed",
+              "G": "{{3.pdf_url}}",
+              "H": "Successfully retrieved and sent"
+            }
+          }
+        }
+      ],
+      "error_handling": {
+        "retry": {
+          "attempts": 3,
+          "interval": 3600,
+          "backoff": "exponential"
+        },
+        "fallback": {
+          "action": "route_to_manual",
+          "notification": "slack_and_email"
+        }
+      }
+    }
+  },
+  "data_stores": {
+    "credentials": {
+      "name": "Carrier_Credentials",
+      "structure": {
+        "ambetter_token": "encrypted",
+        "oscar_api_key": "encrypted",
+        "bcbs_ga_creds": "oauth2",
+        "bcbs_fl_creds": "oauth2"
+      }
+    },
+    "queue": {
+      "name": "ID_Card_Processing_Queue",
+      "type": "google_sheets",
+      "columns": [
+        "client_name",
+        "client_email",
+        "enrollment_date",
+        "retrieval_date",
+        "carrier",
+        "status",
+        "id_card_url",
+        "error_notes",
+        "healthsherpa_email_id",
+        "phone_number"
+      ]
+    }
+  },
+  "external_services": {
+    "selenium_server": {
+      "url": "https://your-automation-server.com",
+      "endpoints": [
+        "/retrieve_oscar",
+        "/retrieve_bcbs",
+        "/retrieve_complex_carrier"
+      ],
+      "authentication": "api_key"
+    },
+    "browserless": {
+      "url": "https://chrome.browserless.io",
+      "api_key": "{{env.BROWSERLESS_KEY}}"
+    }
+  },
+  "monitoring": {
+    "success_metrics": {
+      "automation_success_rate": "> 85%",
+      "average_retrieval_time": "< 5 minutes",
+      "email_delivery_rate": "> 99%"
+    },
+    "alerts": {
+      "failure_threshold": 3,
+      "notification_channels": ["email", "slack"],
+      "escalation_after": "3 consecutive failures"
+    }
+  },
+  "testing": {
+    "test_scenarios": [
+      {
+        "name": "Ambetter_Happy_Path",
+        "input": {
+          "carrier": "Ambetter",
+          "client_name": "Test User",
+          "email": "test@example.com"
+        },
+        "expected": "ID card retrieved and emailed"
+      },
+      {
+        "name": "Manual_Fallback",
+        "input": {
+          "carrier": "Unknown_Carrier",
+          "client_name": "Test User"
+        },
+        "expected": "Routed to manual queue with notification"
+      }
+    ]
+  }
+}
